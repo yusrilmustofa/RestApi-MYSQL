@@ -3,6 +3,9 @@ const bodyparser = require('body-parser');
 const cors = require('cors');
 const mysql = require('mysql');
 const moment = require('moment');
+const md5 = require('md5');
+const Cryptr = require("cryptr")
+const crypt = new Cryptr("140533601726")// Secret Key Boleh Diganti
 
 const app = express()
 app.use(cors())
@@ -22,8 +25,40 @@ db.connect(error => {
     console.log("MySQL Connected");
   }
 })
-
-app.get("/mobil",(req,res)=>{
+validateToken =() => {
+  return (req,res,next)=>{
+    //cek keberadaan token
+    if(!req.get("Token")){
+    //jika Token Tidak ada
+    res.json({
+      message:"Access Denied"
+    })
+  }else {
+    //tampung nilai token
+    let token =req.get("Token")
+    //decrypt token menjadi id_user
+    let decryptToken =crypt.decrypt(token)
+    //sql cek id_user
+    let sql ="select * from user where ?"
+    //set paramater
+    let param ={id_user:decryptToken}
+    //run query
+    db.query(sql,param,(error,result)=>{
+      if(error) throw error
+      //cek keberadaan id_user
+      if (result.length > 0) {
+        //id_user tidak ada
+        next()
+      }else {
+        res.json({
+          message:"Token Denied"
+        })
+      }
+    })
+  }
+  }
+}
+app.get("/mobil",validateToken(),(req,res)=>{
   let sql = "select * from mobil"
   //run query
   db.query(sql,(error,result)=>{
@@ -64,7 +99,7 @@ app.get("/mobil/:id",(req,res)=>{
 })
 
 //end point menambahkan data
-app.post("/mobil",(req,res)=>{
+app.post("/mobil",validateToken(),(req,res)=>{
   let data={
     nomor_mobil:req.body.nomor_mobil,
     merk:req.body.merk,
@@ -93,7 +128,7 @@ app.post("/mobil",(req,res)=>{
 })
 
 //end-point mengubah data mobil
-app.put("/mobil",(req,res)=>{
+app.put("/mobil",validateToken(),(req,res)=>{
   let data=[
     {
       nomor_mobil:req.body.nomor_mobil,
@@ -128,7 +163,7 @@ app.put("/mobil",(req,res)=>{
 })
 
 //end point menghapus data id_mobil
-app.delete("/mobil/:id",(req,res)=>{
+app.delete("/mobil/:id",validateToken(),(req,res)=>{
   let data={
     id_mobil:req.params.id
   }
@@ -147,6 +182,33 @@ app.delete("/mobil/:id",(req,res)=>{
       }
     }
     res.json(response)
+  })
+})
+app.post("/user/auth",(req,res)=>{
+  let param =[
+    req.body.username, //username
+    md5(req.body.password) //password
+  ]
+  // create sql query
+  let sql ="select * from user where username = ? and password = ?"
+  //run query
+  db.query(sql,param,(error,result)=>{
+    if(error) throw error
+    //cek jumlah data hasil query
+    if (result.length > 0) {
+      //user tersedia
+      res.json({
+        message: "Logged",
+                token: crypt.encrypt(result[0].id_user), // generate token
+                data: result
+
+      })
+    }else {
+      //user tidak tersedia
+      res.json({
+        message: "Invalid Usernam/Password"
+      })
+    }
   })
 })
 app.listen(8000,() =>{
